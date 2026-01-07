@@ -1,9 +1,11 @@
 package server
 
 import (
+	"net"
+
 	"goredis/internal/database"
 	"goredis/internal/resp"
-	"net"
+	"goredis/pkg/parser"
 )
 
 type Config struct {
@@ -50,7 +52,7 @@ func (s *Server) handleConn(raw net.Conn) {
 	client := resp.NewTCPConnection(raw)
 	defer client.Close()
 
-	parser := resp.NewParser(raw)
+	parser := parser.NewParser(raw)
 
 	for {
 		payload, err := parser.Parse()
