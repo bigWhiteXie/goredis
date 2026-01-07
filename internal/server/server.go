@@ -3,6 +3,7 @@ package server
 import (
 	"goredis/internal/database"
 	"goredis/internal/resp"
+	"goredis/pkg/parser"
 	"net"
 )
 
@@ -50,7 +51,7 @@ func (s *Server) handleConn(raw net.Conn) {
 	client := resp.NewTCPConnection(raw)
 	defer client.Close()
 
-	parser := resp.NewParser(raw)
+	parser := parser.NewParser(raw)
 
 	for {
 		payload, err := parser.Parse()
