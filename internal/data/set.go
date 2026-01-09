@@ -1,8 +1,7 @@
 package data
 
 import (
-	"errors"
-	"goredis/internal/types"
+	"goredis/internal/common"
 	"goredis/pkg/datastruct"
 	"strconv"
 )
@@ -44,7 +43,7 @@ func NewSet() *SetObject {
 func (s *SetObject) Add(member []byte) bool {
 	switch s.encoding {
 	case EncIntSet:
-		if v, ok := parseInt(member); ok {
+		if v, ok := common.ParseInt(member); ok {
 			added := s.is.Add(v)
 			if s.is.Len() > maxIntSetEntries {
 				s.upgradeToHash()
@@ -64,7 +63,7 @@ func (s *SetObject) Add(member []byte) bool {
 func (s *SetObject) Remove(member []byte) bool {
 	switch s.encoding {
 	case EncIntSet:
-		if v, ok := parseInt(member); ok {
+		if v, ok := common.ParseInt(member); ok {
 			return s.is.Remove(v)
 		}
 		return false
@@ -77,7 +76,7 @@ func (s *SetObject) Remove(member []byte) bool {
 func (s *SetObject) Contains(member []byte) bool {
 	switch s.encoding {
 	case EncIntSet:
-		if v, ok := parseInt(member); ok {
+		if v, ok := common.ParseInt(member); ok {
 			return s.is.Contains(v)
 		}
 		return false
@@ -141,35 +140,4 @@ func (s *SetObject) Pop() ([]byte, bool) {
 		return []byte(strconv.FormatInt(v, 10)), true
 	}
 	return s.hs.Pop()
-}
-
-func parseInt(b []byte) (int64, bool) {
-	v, err := strconv.ParseInt(string(b), 10, 64)
-	return v, err == nil
-}
-
-func getOrCreateSet(db types.Database, key string) (*SetObject, error) {
-	entity, exists := db.GetEntity(key)
-	if !exists {
-		s := NewSet()
-		db.PutEntity(key, &types.DataEntity{Data: s})
-		return s, nil
-	}
-	s, ok := entity.Data.(*SetObject)
-	if !ok {
-		return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
-	}
-	return s, nil
-}
-
-func getSet(db types.Database, key string) (*SetObject, bool, error) {
-	entity, exists := db.GetEntity(key)
-	if !exists {
-		return nil, false, nil
-	}
-	s, ok := entity.Data.(*SetObject)
-	if !ok {
-		return nil, false, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
-	}
-	return s, true, nil
 }

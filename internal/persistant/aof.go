@@ -3,8 +3,10 @@ package persistant
 import (
 	"bufio"
 	"fmt"
+	"goredis/internal/common"
 	"goredis/internal/resp"
 	"goredis/internal/types"
+	"goredis/pkg/parser"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,17 +19,21 @@ const (
 )
 
 type AOFHandler struct {
-	file   *os.File
-	writer *bufio.Writer
-	ch     chan types.CmdLine
-
+	file        *os.File
+	writer      *bufio.Writer
+	ch          chan types.CmdLine
 	mu          sync.Mutex
+	path        string
 	bufferCount int
 }
 
 func NewAOFHandler(dir string, dbIndex int) (*AOFHandler, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+
 	path := filepath.Join(dir, fmt.Sprintf("db%d.aof", dbIndex))
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +42,7 @@ func NewAOFHandler(dir string, dbIndex int) (*AOFHandler, error) {
 		file:   file,
 		writer: bufio.NewWriter(file),
 		ch:     make(chan types.CmdLine, 4096),
+		path:   path,
 	}
 
 	go h.handle()
@@ -59,6 +66,9 @@ func (aof *AOFHandler) handle() {
 	for {
 		select {
 		case cmd := <-aof.ch:
+			if !cmd.IsWrite() {
+				continue
+			}
 			aof.writeCmd(cmd)
 			aof.bufferCount++
 
@@ -87,4 +97,39 @@ func (h *AOFHandler) flush() {
 		log.Printf("aof fsync failed: %v", err)
 	}
 	h.bufferCount = 0
+}
+
+func (aof *AOFHandler) HasData() bool {
+	info, err := os.Stat(aof.path)
+	if err != nil {
+		return false
+	}
+	return info.Size() > 0
+}
+
+func (aof *AOFHandler) Load(replay func(cmd types.CmdLine)) error {
+	file, err := os.Open(aof.path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	parser := parser.NewParser(file)
+
+	for {
+		payload, err := parser.Parse()
+		if err != nil {
+			// EOF 是正常结束
+			break
+		}
+
+		cmdLine, ok := common.ToCmdLine(payload)
+		common.LogBytesArr("aof reload", cmdLine)
+		if !ok {
+			continue
+		}
+
+		replay(cmdLine)
+	}
+	return nil
 }

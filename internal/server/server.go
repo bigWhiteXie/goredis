@@ -1,9 +1,11 @@
 package server
 
 import (
+	"goredis/internal/common"
 	"goredis/internal/database"
 	"goredis/internal/resp"
 	"goredis/pkg/parser"
+	"log"
 	"net"
 )
 
@@ -43,6 +45,7 @@ func (s *Server) ListenAndServe() error {
 		if err != nil {
 			continue
 		}
+		log.Printf("[server] accept connect success")
 		go s.handleConn(conn)
 	}
 }
@@ -59,7 +62,13 @@ func (s *Server) handleConn(raw net.Conn) {
 			return
 		}
 
-		cmdLine := payload.([][]byte)
+		cmdLine, ok := common.ToCmdLine(payload)
+		if !ok {
+			log.Printf("[server] invalid payload type: %T", payload)
+			return
+		}
+		common.LogBytesArr("server", cmdLine)
+
 		db := s.dbs[client.GetDBIndex()]
 
 		reply := db.Exec(client, cmdLine)

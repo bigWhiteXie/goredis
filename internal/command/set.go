@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"goredis/internal/common"
 	"goredis/internal/data"
 	"goredis/internal/resp"
 	"goredis/internal/types"
@@ -124,7 +125,7 @@ func execSRandMember(db types.Database, args [][]byte) resp.Reply {
 
 	// 简化实现（可重复）
 	res := make([][]byte, 0, count)
-	for i := 0; i < abs(count); i++ {
+	for i := 0; i < common.Abs(count); i++ {
 		v, ok := s.Random()
 		if !ok {
 			break
@@ -240,11 +241,4 @@ func getSet(db types.Database, key string) (*data.SetObject, bool, error) {
 		return nil, false, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
 	return s, true, nil
-}
-
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
 }

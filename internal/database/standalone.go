@@ -60,11 +60,3 @@ func (mdb *StandaloneDatabase) execSelect(c resp.Connection, args [][]byte) resp
 	c.SelectDB(index)
 	return resp.MakeOkReply()
 }
-
-func (mdb *StandaloneDatabase) Close() {
-	// 可以在这里做持久化落盘
-}
-
-func (mdb *StandaloneDatabase) AfterClientClose(c resp.Connection) {
-	// 清理逻辑
-}

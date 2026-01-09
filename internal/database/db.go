@@ -31,9 +31,24 @@ func MakeDB(index int, dir string) *DB {
 		ttlMap:     datastruct.MakeConcurrent(1024),
 		aofHandler: aofHandler,
 	}
+
+	if aofHandler.HasData() {
+		if err := db.loadAOF(); err != nil {
+			panic(err)
+		}
+	}
+
 	db.StartExpireTask()
 
 	return db
+}
+
+func (db *DB) loadAOF() error {
+	return db.aofHandler.Load(func(cmd types.CmdLine) {
+		// FakeConn，避免再次写 AOF
+		conn := resp.NewFakeConnection(db.index)
+		db.Exec(conn, cmd)
+	})
 }
 
 // GetEntity 从 dict 获取 types.DataEntity

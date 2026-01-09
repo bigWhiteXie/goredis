@@ -63,3 +63,39 @@ func (c *TCPConnection) SelectDB(index int) {
 func (c *TCPConnection) RemoteAddr() string {
 	return c.conn.RemoteAddr().String()
 }
+
+type FakeConnection struct {
+	dbIndex int
+}
+
+func NewFakeConnection(db int) *FakeConnection {
+	return &FakeConnection{dbIndex: db}
+}
+
+func (c *FakeConnection) GetDBIndex() int {
+	return c.dbIndex
+}
+
+func (c *FakeConnection) SelectDB(i int) {
+	c.dbIndex = i
+}
+
+func (c *FakeConnection) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (c *FakeConnection) IsFake() bool {
+	return true
+}
+
+func (c *FakeConnection) Close() error {
+	return nil
+}
+
+func (c *FakeConnection) IsClosed() bool {
+	return false
+}
+
+func (c *FakeConnection) RemoteAddr() string {
+	return "local:aof"
+}
