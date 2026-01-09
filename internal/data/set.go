@@ -143,6 +143,11 @@ func (s *SetObject) Pop() ([]byte, bool) {
 	return s.hs.Pop()
 }
 
+func parseInt(b []byte) (int64, bool) {
+	v, err := strconv.ParseInt(string(b), 10, 64)
+	return v, err == nil
+}
+
 func getOrCreateSet(db types.Database, key string) (*SetObject, error) {
 	entity, exists := db.GetEntity(key)
 	if !exists {
@@ -167,9 +172,4 @@ func getSet(db types.Database, key string) (*SetObject, bool, error) {
 		return nil, false, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
 	return s, true, nil
-}
-
-func parseInt(b []byte) (int64, bool) {
-	v, err := strconv.ParseInt(string(b), 10, 64)
-	return v, err == nil
 }

@@ -28,6 +28,12 @@ type SimpleString struct {
 	valRaw []byte
 }
 
+func NewSimpleString(isInt bool, val int64) *SimpleString {
+	return &SimpleString{
+		isInt:  isInt,
+		valInt: val,
+	}
+}
 func NewStringFromBytes(b []byte) *SimpleString {
 	// 尝试解析成 int（模拟 Redis 行为）
 	if i, err := strconv.ParseInt(string(b), 10, 64); err == nil {

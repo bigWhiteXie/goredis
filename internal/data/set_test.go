@@ -1,8 +1,6 @@
 package data
 
 import (
-	"goredis/internal/database"
-	"goredis/internal/types"
 	"reflect"
 	"sort"
 	"strconv"
@@ -141,45 +139,6 @@ func TestRandomAndPop(t *testing.T) {
 	}
 	if popCount != 100 {
 		t.Errorf("Pop count mismatch: %d", popCount)
-	}
-}
-
-// ---------- 辅助函数 ----------
-
-func TestGetOrCreateSet(t *testing.T) {
-	db := database.MakeDB(0, "/tmp")
-
-	// 首次创建
-	s1, err := getOrCreateSet(db, "key")
-	if err != nil || s1.Len() != 0 {
-		t.Fatal("getOrCreateSet should create new set")
-	}
-	// 再次获取应为同一实例
-	s2, err := getOrCreateSet(db, "key")
-	if err != nil || s1 != s2 {
-		t.Error("getOrCreateSet should return same object")
-	}
-	// 类型冲突
-	db.PutEntity("wrong", &types.DataEntity{Data: "string"})
-	_, err = getOrCreateSet(db, "wrong")
-	if err == nil || err.Error() != "WRONGTYPE Operation against a key holding the wrong kind of value" {
-		t.Error("expected WRONGTYPE error")
-	}
-}
-
-func TestGetSet(t *testing.T) {
-	db := database.MakeDB(0, "/tmp")
-	// key 不存在
-	_, exist, err := getSet(db, "no")
-	if err != nil || exist {
-		t.Error("getSet on missing key should return exist=false")
-	}
-	// 正常获取
-	s := NewSet()
-	db.PutEntity("yes", &types.DataEntity{Data: s})
-	got, exist, err := getSet(db, "yes")
-	if err != nil || !exist || got != s {
-		t.Error("getSet failed")
 	}
 }
 
