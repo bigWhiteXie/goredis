@@ -1,12 +1,13 @@
-package datastruct
+package data
 
 import (
 	"errors"
-	"goredis/internal/resp"
-	"goredis/internal/types"
 	"strconv"
 	"strings"
 	"time"
+
+	"goredis/internal/resp"
+	"goredis/internal/types"
 )
 
 type String struct {

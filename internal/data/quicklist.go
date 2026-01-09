@@ -1,0 +1,244 @@
+package data
+
+import (
+	"goredis/pkg/datastruct"
+)
+
+const (
+	lpMaxSize = 512
+)
+
+type QuickListNode struct {
+	lp *datastruct.ListPack
+}
+
+type QuickList struct {
+	list      *datastruct.List // 你已有的双向链表
+	len       int              // 总元素数
+	lpMaxSize int              // 单个 listpack 最大元素数
+}
+
+func NewQuickList() *QuickList {
+	return &QuickList{
+		list:      datastruct.NewList(),
+		lpMaxSize: lpMaxSize,
+	}
+}
+
+func newNode(size int) *QuickListNode {
+	return &QuickListNode{
+		lp: datastruct.NewListPack(size),
+	}
+}
+
+func (ql *QuickList) headNode() *QuickListNode {
+	if ql.list.Len() == 0 {
+		return nil
+	}
+	return ql.list.Head().Value().(*QuickListNode)
+}
+
+func (ql *QuickList) tailNode() *QuickListNode {
+	if ql.list.Len() == 0 {
+		return nil
+	}
+	return ql.list.Tail().Value().(*QuickListNode)
+}
+
+// 拆成两个大小近似的节点
+
+func (ql *QuickList) splitNode(node *datastruct.Node) {
+	qn := node.Value().(*QuickListNode)
+	lp := qn.lp
+	if lp.Len() <= ql.lpMaxSize {
+		return
+	}
+
+	mid := lp.Len() / 2
+	newLP := datastruct.NewListPack(ql.lpMaxSize)
+	for i := mid; i < lp.Len(); i++ {
+		newLP.PushBack(lp.Range(i, i)[0])
+	}
+
+	lp.Clear()
+	for i := 0; i < mid; i++ {
+		lp.PushBack(newLP.Range(i, i)[0])
+	}
+
+	newNode := &QuickListNode{lp: newLP}
+	ql.list.InsertAfter(node, newNode)
+}
+
+func (ql *QuickList) PushFront(val []byte) {
+	head := ql.headNode()
+	if head == nil {
+		node := newNode(ql.lpMaxSize)
+		node.lp.PushFront(val)
+		ql.list.PushFront(node)
+	} else {
+		head.lp.PushFront(val)
+		if head.lp.Len() > ql.lpMaxSize {
+			ql.splitNode(ql.list.Head())
+		}
+	}
+	ql.len++
+}
+
+func (ql *QuickList) PushBack(val []byte) {
+	tail := ql.tailNode()
+	if tail == nil {
+		node := newNode(ql.lpMaxSize)
+		node.lp.PushBack(val)
+		ql.list.PushBack(node)
+	} else {
+		tail.lp.PushBack(val)
+		if tail.lp.Len() > ql.lpMaxSize {
+			ql.splitNode(ql.list.Tail())
+		}
+	}
+	ql.len++
+}
+
+func (ql *QuickList) PopFront() []byte {
+	headNode := ql.list.Head()
+	if headNode == nil {
+		return nil
+	}
+
+	qn := headNode.Value().(*QuickListNode)
+	val := qn.lp.PopFront()
+	if val == nil {
+		return nil
+	}
+
+	if qn.lp.Len() == 0 {
+		ql.list.Remove(headNode)
+	}
+	ql.len--
+	return val
+}
+
+func (ql *QuickList) PopBack() []byte {
+	tailNode := ql.list.Tail()
+	if tailNode == nil {
+		return nil
+	}
+
+	qn := tailNode.Value().(*QuickListNode)
+	val := qn.lp.PopBack()
+	if val == nil {
+		return nil
+	}
+
+	if qn.lp.Len() == 0 {
+		ql.list.Remove(tailNode)
+	}
+	ql.len--
+	return val
+}
+
+func (ql *QuickList) Get(index int) ([]byte, bool) {
+	if index < 0 {
+		index = ql.len + index
+	}
+	if index < 0 || index >= ql.len {
+		return nil, false
+	}
+
+	n := index
+	for node := ql.list.Head(); node != nil; node = node.Next() {
+		qn := node.Value().(*QuickListNode)
+		if n < qn.lp.Len() {
+			return qn.lp.Get(n)
+		}
+		n -= qn.lp.Len()
+	}
+	return nil, false
+}
+
+func (ql *QuickList) Range(start, stop int) [][]byte {
+	if ql.len == 0 {
+		return nil
+	}
+
+	if start < 0 {
+		start = ql.len + start
+	}
+	if stop < 0 {
+		stop = ql.len + stop
+	}
+
+	if start < 0 {
+		start = 0
+	}
+	if stop >= ql.len {
+		stop = ql.len - 1
+	}
+	if start > stop {
+		return nil
+	}
+
+	var res [][]byte
+	idx := 0
+
+	for node := ql.list.Head(); node != nil; node = node.Next() {
+		qn := node.Value().(*QuickListNode)
+		for i := 0; i < qn.lp.Len(); i++ {
+			if idx >= start && idx <= stop {
+				v, _ := qn.lp.Get(i)
+				res = append(res, v)
+			}
+			idx++
+			if idx > stop {
+				return res
+			}
+		}
+	}
+	return res
+}
+
+func (ql *QuickList) Set(index int, val []byte) bool {
+	if index < 0 {
+		index = ql.len + index
+	}
+	if index < 0 || index >= ql.len {
+		return false
+	}
+
+	n := index
+	for node := ql.list.Head(); node != nil; node = node.Next() {
+		qn := node.Value().(*QuickListNode)
+		if n < qn.lp.Len() {
+			return qn.lp.Set(n, val)
+		}
+		n -= qn.lp.Len()
+	}
+	return false
+}
+
+func (ql *QuickList) RemoveByValue(count int, val []byte) int {
+	removed := 0
+
+	for node := ql.list.Head(); node != nil && (count == 0 || removed < abs(count)); {
+		next := node.Next()
+		qn := node.Value().(*QuickListNode)
+
+		n := qn.lp.RemoveByValue(count, val)
+		removed += n
+
+		if qn.lp.Len() == 0 {
+			ql.list.Remove(node)
+		}
+
+		node = next
+	}
+	ql.len -= removed
+	return removed
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}

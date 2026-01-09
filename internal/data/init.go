@@ -1,4 +1,4 @@
-package datastruct
+package data
 
 import "goredis/internal/command"
 
