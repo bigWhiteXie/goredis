@@ -71,9 +71,9 @@ func (db *DB) PutIfAbsent(key string, entity *types.DataEntity) int {
 }
 
 // Remove 删除 Key
-func (db *DB) Remove(key string) {
-	db.data.Remove(key)
+func (db *DB) Remove(key string) bool {
 	db.ttlMap.Remove(key) // 别忘了删除 TTL
+	return db.data.Remove(key) == 1
 }
 
 // Exec 在单个 DB 中执行命令

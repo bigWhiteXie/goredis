@@ -20,7 +20,7 @@ type Database interface {
 	PutIfAbsent(key string, entity *DataEntity) int
 
 	// Remove 删除指定键
-	Remove(key string)
+	Remove(key string) bool
 
 	// Exec 在数据库中执行命令
 	Exec(c resp.Connection, cmdLine [][]byte) resp.Reply

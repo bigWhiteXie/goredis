@@ -152,6 +152,23 @@ func (lp *ListPack) RemoveByValue(count int, val []byte) int {
 	return removed
 }
 
+func (lp *ListPack) GetRaw(index int) []byte {
+	if lp.Len() <= index || index < 0 {
+		return nil
+	}
+
+	return lp.data[index]
+}
+
+// RemoveAt 从 listpack 中删除指定索引的元素
+func (lp *ListPack) RemoveAt(index int) {
+	if index < 0 || index >= lp.Len() {
+		return
+	}
+
+	lp.data = append(lp.data[:index], lp.data[index+1:]...)
+}
+
 func (lp *ListPack) Clear() {
 	lp.data = lp.data[:0]
 }

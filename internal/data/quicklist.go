@@ -8,6 +8,41 @@ const (
 	lpMaxSize = 512
 )
 
+type List interface {
+	// LPUSH
+	PushFront(val []byte)
+
+	// RPUSH
+	PushBack(val []byte)
+
+	// LPOP
+	PopFront() []byte
+
+	// RPOP
+	PopBack() []byte
+
+	// LLEN
+	Len() int
+
+	// LINDEX
+	Get(index int) ([]byte, bool)
+
+	// LSET
+	Set(index int, val []byte) bool
+
+	// LRANGE
+	Range(start, stop int) [][]byte
+
+	// LREM
+	// 返回删除的元素个数
+	RemoveByValue(count int, val []byte) int
+
+	// LTRIM
+	Trim(start, stop int)
+}
+
+var _ List = &QuickList{}
+
 type QuickListNode struct {
 	lp *datastruct.ListPack
 }
@@ -45,7 +80,7 @@ func (ql *QuickList) tailNode() *QuickListNode {
 	return ql.list.Tail().Value().(*QuickListNode)
 }
 
-// 拆成两个大小近似的节点
+// 拆成两个大小近似的节点， 避免频繁节点分裂
 
 func (ql *QuickList) splitNode(node *datastruct.Node) {
 	qn := node.Value().(*QuickListNode)
@@ -55,14 +90,16 @@ func (ql *QuickList) splitNode(node *datastruct.Node) {
 	}
 
 	mid := lp.Len() / 2
+	size := lp.Len()
 	newLP := datastruct.NewListPack(ql.lpMaxSize)
+
+	// 新节点放置后一半的数据
 	for i := mid; i < lp.Len(); i++ {
 		newLP.PushBack(lp.Range(i, i)[0])
 	}
-
-	lp.Clear()
-	for i := 0; i < mid; i++ {
-		lp.PushBack(newLP.Range(i, i)[0])
+	// 旧节点的后半段数据清理掉
+	for i := 0; i < size-mid; i++ {
+		lp.PopBack()
 	}
 
 	newNode := &QuickListNode{lp: newLP}
@@ -236,9 +273,68 @@ func (ql *QuickList) RemoveByValue(count int, val []byte) int {
 	return removed
 }
 
+func (ql *QuickList) Trim(start, stop int) {
+	if ql.len == 0 {
+		return
+	}
+
+	start, stop, ok := normalizeRange(start, stop, ql.len)
+	if !ok {
+		// trim 后为空
+		ql.list = datastruct.NewList()
+		ql.len = 0
+		return
+	}
+
+	// 需要删除的左边元素数量
+	leftRemove := start
+	// 需要删除的右边元素数量
+	rightRemove := ql.len - stop - 1
+
+	// 从左侧删除
+	for i := 0; i < leftRemove; i++ {
+		ql.PopFront()
+	}
+
+	// 从右侧删除
+	for i := 0; i < rightRemove; i++ {
+		ql.PopBack()
+	}
+}
+
+func (ql *QuickList) Len() int {
+	return ql.len
+}
+
 func abs(n int) int {
 	if n < 0 {
 		return -n
 	}
 	return n
+}
+
+func normalizeRange(start, stop, length int) (int, int, bool) {
+	if length == 0 {
+		return 0, 0, false
+	}
+
+	if start < 0 {
+		start = length + start
+	}
+	if stop < 0 {
+		stop = length + stop
+	}
+
+	if start < 0 {
+		start = 0
+	}
+	if stop >= length {
+		stop = length - 1
+	}
+
+	if start > stop || start >= length || stop < 0 {
+		return 0, 0, false
+	}
+
+	return start, stop, true
 }
