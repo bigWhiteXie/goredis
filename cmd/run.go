@@ -10,6 +10,7 @@ import (
 var (
 	addr   string
 	aofDir string
+	master string
 	dbNum  int
 )
 
@@ -18,9 +19,10 @@ var runCmd = &cobra.Command{
 	Short: "Run the Redis server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := server.Config{
-			Addr:   addr,
-			AOFDir: aofDir,
-			DBNum:  dbNum,
+			Addr:       addr,
+			AOFDir:     aofDir,
+			DBNum:      dbNum,
+			MasterAddr: master,
 		}
 
 		srv, err := server.NewServer(cfg)
@@ -36,6 +38,7 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().StringVar(&addr, "addr", ":6379", "server listen address")
 	runCmd.Flags().StringVar(&aofDir, "aof-dir", "./data", "AOF persistence directory")
+	runCmd.Flags().StringVar(&master, "master", "", "master addr")
 	runCmd.Flags().IntVar(&dbNum, "db-num", 16, "number of databases")
 
 	rootCmd.AddCommand(runCmd)

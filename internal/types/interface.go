@@ -2,6 +2,7 @@ package types
 
 import (
 	"goredis/internal/resp"
+	"goredis/pkg/connection"
 	"time"
 )
 
@@ -13,17 +14,15 @@ type Database interface {
 	// PutEntity 将数据实体存入数据库
 	PutEntity(key string, entity *DataEntity) int
 
-	// PutIfExists 仅当键存在时更新
-	PutIfExists(key string, entity *DataEntity) int
+	GetDBIndex() int
 
-	// PutIfAbsent 仅当键不存在时插入
-	PutIfAbsent(key string, entity *DataEntity) int
+	ForEach(handler func(key string, entity RedisData))
 
 	// Remove 删除指定键
-	Remove(key string)
+	Remove(key string) bool
 
 	// Exec 在数据库中执行命令
-	Exec(c resp.Connection, cmdLine [][]byte) resp.Reply
+	Exec(c connection.Connection, cmdLine [][]byte) resp.Reply
 
 	// SetExpire 设置键的过期时间
 	SetExpire(key string, expireTime time.Time)
@@ -36,4 +35,15 @@ type Database interface {
 
 	// DeleteTTL 删除键的过期时间
 	DeleteTTL(key string)
+
+	// GetExpireTime 获取键的过期时间
+	GetExpireTime(key string) (time.Time, bool)
+}
+
+type RedisData interface {
+	ToWriteCmdLine(key string) [][]byte
+}
+
+type Cloneable interface {
+	Clone() interface{}
 }

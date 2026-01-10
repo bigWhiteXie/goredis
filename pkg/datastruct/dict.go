@@ -14,7 +14,7 @@ const DefaultDictSize = 1024
 const ShardCount = 1024
 
 // Consumer 用于遍历的回调，返回 false 则停止遍历
-type Consumer func(key string, val interface{}) bool
+type Consumer func(key string, data interface{}) bool
 
 // Dict 抽象接口，屏蔽底层实现细节
 type Dict interface {
@@ -164,17 +164,15 @@ func (dict *ConcurrentDict) RandomKeys(limit int) []string {
 	if limit >= size {
 		return dict.Keys()
 	}
-
+	used := make(map[string]bool)
 	result := make([]string, limit)
 	// 随机选分片，再从分片里随机选 key
 	// 注意：Go 的 map 遍历本身就是随机的，但我们需要跨分片随机
 
 	for i := 0; i < limit; i++ {
-		// 随机尝试 100 次找到一个非空分片
-		for j := 0; j < 100; j++ {
+		flag := false
+		for {
 			shard := dict.table[rand.Intn(dict.shardCount)]
-			// 这种不加锁直接读 len 是不准确的，但在随机算法中可以接受（为了性能）
-			// 如果要严格准确，需要 RLock
 			if len(shard.m) == 0 {
 				continue
 			}
@@ -182,11 +180,17 @@ func (dict *ConcurrentDict) RandomKeys(limit int) []string {
 			shard.mutex.RLock()
 			// Go map 的随机性：range 一个就可以拿到随机元素
 			for key := range shard.m {
-				result[i] = key
-				break // 拿到一个就跑
+				if !used[key] {
+					result[i] = key
+					used[key] = true
+					flag = true
+					break // 拿到一个就跑
+				}
 			}
 			shard.mutex.RUnlock()
-			break
+			if flag {
+				break
+			}
 		}
 	}
 	return result

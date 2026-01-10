@@ -30,17 +30,17 @@ func (r *SimpleStringReply) ToBytes() []byte {
 }
 
 type IntReply struct {
-	Code int64
+	IntVal int64
 }
 
 func MakeIntReply(code int64) *IntReply {
 	return &IntReply{
-		Code: code,
+		IntVal: code,
 	}
 }
 
 func (r *IntReply) ToBytes() []byte {
-	return []byte(":" + strconv.FormatInt(r.Code, 10) + string(CRLF))
+	return []byte(":" + strconv.FormatInt(r.IntVal, 10) + string(CRLF))
 }
 
 type StandardErrReply struct {
