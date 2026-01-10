@@ -81,9 +81,11 @@ func (s *SimpleString) IncrBy(delta int64) (int64, error) {
 }
 
 func (s *SimpleString) ToWriteCmdLine(key string) [][]byte {
-	cmdLine := [][]byte{[]byte("set"), []byte(key)}
-	cmdLine = append(cmdLine, s.valRaw)
-	return cmdLine
+	return [][]byte{
+		[]byte("set"),
+		[]byte(key),
+		s.Get(),
+	}
 }
 
 func (s *SimpleString) Clone() interface{} {

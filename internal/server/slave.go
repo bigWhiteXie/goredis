@@ -110,6 +110,7 @@ func (s *Server) replicationLoop(parser *parser.Parser) error {
 			s.sendAck()
 
 		default:
+			//这是阻塞操作
 			payload, err := parser.Parse()
 			if err != nil {
 				log.Printf("[slave] read byte from master failed for %s, try to reconnect....", err)

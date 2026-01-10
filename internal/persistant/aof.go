@@ -26,6 +26,14 @@ const (
 	AOFRewriting = 1
 )
 
+type AOFHandlerInterface interface {
+	AddAOF(cmd types.CmdLine)
+	HasData() bool
+	Load(replay func(cmd types.CmdLine)) error
+	Rewrite(db types.Database) error
+	LogSize() (int64, error)
+}
+
 type AOFHandler struct {
 	path   string
 	file   *os.File      // aof文件
@@ -91,8 +99,14 @@ func (aof *AOFHandler) Rewrite(db types.Database) error {
 	aof.state = AOFRewriting
 	aof.mu.Unlock()
 
-	tmpPath := fmt.Sprintf("db%d.aof.tmp", db.GetDBIndex())
-	tmpFile, _ := os.Create(tmpPath)
+	tmpPath := aof.path + ".tmp"
+	tmpFile, err := os.Create(tmpPath)
+	if err != nil {
+		aof.mu.Lock()
+		aof.state = AOFNormal
+		aof.mu.Unlock()
+		return err
+	}
 	writer := bufio.NewWriter(tmpFile)
 
 	// 写快照
@@ -108,14 +122,17 @@ func (aof *AOFHandler) Rewrite(db types.Database) error {
 		cmd := entity.ToWriteCmdLine(key)
 		reply := resp.MakeMultiBulkReply(cmd)
 		writer.Write(reply.ToBytes())
-		// 该key有过期时间则加上
 		if ttl > 0 {
-			ttlResp := resp.MakeMultiBulkReply([][]byte{[]byte("expire"), []byte(key), []byte(strconv.FormatFloat(ttl, 'f', -1, 64))})
+			ttlResp := resp.MakeMultiBulkReply([][]byte{
+				[]byte("expire"),
+				[]byte(key),
+				[]byte(strconv.FormatFloat(ttl, 'f', -1, 64)),
+			})
 			writer.Write(ttlResp.ToBytes())
 		}
 	})
 
-	// 2写 rewrite buffer
+	// 写 rewrite buffer
 	aof.mu.Lock()
 	for _, cmd := range aof.rewriteBuf {
 		reply := resp.MakeMultiBulkReply(cmd)
@@ -124,17 +141,62 @@ func (aof *AOFHandler) Rewrite(db types.Database) error {
 	aof.rewriteBuf = nil
 	aof.mu.Unlock()
 
-	writer.Flush()
-	tmpFile.Sync()
-	tmpFile.Close()
-
-	// 原子替换
-	os.Rename(tmpPath, aof.file.Name())
+	if err := writer.Flush(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		aof.mu.Lock()
+		aof.state = AOFNormal
+		aof.mu.Unlock()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		aof.mu.Lock()
+		aof.state = AOFNormal
+		aof.mu.Unlock()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		aof.mu.Lock()
+		aof.state = AOFNormal
+		aof.mu.Unlock()
+		return err
+	}
 
 	aof.mu.Lock()
-	aof.state = AOFNormal
-	aof.mu.Unlock()
+	defer aof.mu.Unlock()
 
+	// 1. 刷新并关闭当前文件
+	aof.writer.Flush()
+	aof.file.Sync()
+	aof.file.Close()
+
+	// 2. 原子重命名（覆盖原文件）
+	if err := os.Rename(tmpPath, aof.path); err != nil {
+		// 回滚：尝试重新打开原文件
+		aof.file, _ = os.OpenFile(aof.path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
+		aof.writer = bufio.NewWriter(aof.file)
+		aof.state = AOFNormal
+		return err
+	}
+
+	// 3. 重新打开新文件
+	aof.file, err = os.OpenFile(aof.path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
+	if err != nil {
+		aof.state = AOFNormal
+		return err
+	}
+	aof.writer = bufio.NewWriter(aof.file)
+
+	// 4. 更新 offset（重新计算文件大小）
+	if info, err := aof.file.Stat(); err == nil {
+		aof.offset = info.Size()
+		atomic.StoreInt64(&aof.offset, info.Size())
+	}
+
+	aof.state = AOFNormal
 	return nil
 }
 
@@ -221,8 +283,7 @@ func (aof *AOFHandler) writeCmd(cmd types.CmdLine) {
 		go func(conn connection.Connection) {
 			if _, err := s.Write(b); err != nil {
 				log.Printf("[aof replication] write cmd failed: %s", err)
-				conn.Close()
-
+				conn.Close() // 触发slave重连
 				aof.slavesMu.Lock()
 				delete(aof.slaves, s)
 				aof.slavesMu.Unlock()
@@ -322,7 +383,7 @@ func (aof *AOFHandler) Reset(offset int64) error {
 	aof.bufferCount = 0
 	aof.offset = offset
 	aof.rewriteBuf = make([]types.CmdLine, 0)
-	atomic.StoreInt64(&aof.offset, 0)
+	atomic.StoreInt64(&aof.offset, offset)
 
 	return nil
 }

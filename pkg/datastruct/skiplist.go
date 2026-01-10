@@ -51,10 +51,11 @@ func NewSkipList() *SkipList {
 }
 
 // randomLevel 生成随机节点高度
+var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func randomLevel() int {
 	level := 1
-	rand.Seed(time.Now().UnixNano())
-	for rand.Float64() < Probability && level < MaxLevel {
+	for rnd.Float64() < Probability && level < MaxLevel {
 		level++
 	}
 	return level
@@ -170,15 +171,23 @@ func (sl *SkipList) Delete(score float64, member []byte) bool {
 func (sl *SkipList) GetRank(score float64, member []byte) int {
 	rank := 0
 	x := sl.header
+
 	for i := sl.level - 1; i >= 0; i-- {
-		for x.forward[i] != nil && (x.forward[i].element.Score < score ||
-			(x.forward[i].element.Score == score && string(x.forward[i].element.Member) <= string(member))) {
+		for x.forward[i] != nil &&
+			(x.forward[i].element.Score < score ||
+				(x.forward[i].element.Score == score &&
+					string(x.forward[i].element.Member) < string(member))) {
+
 			rank += x.span[i]
 			x = x.forward[i]
 		}
-		if x != nil && string(x.element.Member) == string(member) {
-			return rank - 1 // 0-based
-		}
+	}
+
+	x = x.forward[0]
+	if x != nil &&
+		x.element.Score == score &&
+		string(x.element.Member) == string(member) {
+		return rank
 	}
 	return -1
 }
@@ -188,18 +197,18 @@ func (sl *SkipList) GetByRank(rank int) *SkipListNode {
 	if rank < 0 || rank >= sl.length {
 		return nil
 	}
+
 	traversed := 0
 	x := sl.header
+
 	for i := sl.level - 1; i >= 0; i-- {
 		for x.forward[i] != nil && traversed+x.span[i] <= rank {
 			traversed += x.span[i]
 			x = x.forward[i]
 		}
-		if traversed == rank {
-			return x
-		}
 	}
-	return nil
+
+	return x.forward[0]
 }
 
 // RangeToBytes 按正序返回 start-stop 的成员（支持 WITHSCORES）
@@ -299,7 +308,7 @@ func (sl *SkipList) RangeNodes(startRank, stopRank int, forward bool) []*SkipLis
 	nodes := make([]*SkipListNode, 0, stopRank-startRank+1)
 
 	if forward {
-		// 正序遍历
+		// ===== 正序（你原来的逻辑是 OK 的）=====
 		rank := 0
 		x := sl.header
 		for i := sl.level - 1; i >= 0; i-- {
@@ -308,34 +317,33 @@ func (sl *SkipList) RangeNodes(startRank, stopRank int, forward bool) []*SkipLis
 				x = x.forward[i]
 			}
 		}
-		// x.forward[0] 是起点
 		x = x.forward[0]
-		rank++
-		for x != nil && rank-1 <= stopRank {
+		for x != nil && rank <= stopRank {
 			nodes = append(nodes, x)
 			x = x.forward[0]
 			rank++
 		}
 	} else {
-		// 逆序遍历
-		// 找到 stopRank 对应节点
-		var startNode *SkipListNode
+		// ===== 逆序（关键修复）=====
+		n := sl.length
+		revStart := n - 1 - startRank
+		revStop := n - 1 - stopRank
+
+		// 找到 revStart 对应节点（正序 rank）
 		rank := 0
 		x := sl.header
 		for i := sl.level - 1; i >= 0; i-- {
-			for x.forward[i] != nil && rank+x.span[i] <= stopRank {
+			for x.forward[i] != nil && rank+x.span[i] <= revStart {
 				rank += x.span[i]
 				x = x.forward[i]
 			}
 		}
-		startNode = x.forward[0]
-		if startNode == nil {
-			return nil
-		}
-		// 从 stopRank 开始向前遍历
-		rank = stopRank
-		for x := startNode; x != nil && rank >= startRank; x = x.backward {
+		x = x.forward[0]
+
+		// 向 backward 遍历到 revStop
+		for x != nil && rank >= revStop {
 			nodes = append(nodes, x)
+			x = x.backward
 			rank--
 		}
 	}

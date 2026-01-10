@@ -108,7 +108,7 @@ func execSRandMember(db types.Database, args [][]byte) resp.Reply {
 		if err != nil {
 			return resp.MakeErrReply("ERR value is not an integer or out of range")
 		}
-		count = n
+		count = common.Abs(n)
 	}
 
 	s, exists, err := getSet(db, key)
@@ -124,7 +124,6 @@ func execSRandMember(db types.Database, args [][]byte) resp.Reply {
 		return resp.MakeBulkReply(v)
 	}
 
-	// 简化实现（可重复）
 	res := make([][]byte, 0, count)
 	for i := 0; i < common.Abs(count); i++ {
 		v, ok := s.Random()
@@ -181,7 +180,7 @@ func execSInter(db types.Database, args [][]byte) resp.Reply {
 	if err != nil {
 		return resp.MakeErrReply(err.Error())
 	}
-	if len(sets) == 0 {
+	if len(sets) < len(args) {
 		return resp.MakeNullBulkReply()
 	}
 

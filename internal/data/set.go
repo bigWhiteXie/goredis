@@ -91,7 +91,13 @@ func (s *SetObject) Contains(member []byte) bool {
 
 func (s *SetObject) Len() int {
 	if s.encoding == EncIntSet {
+		if s.is == nil {
+			return 0
+		}
 		return s.is.Len()
+	}
+	if s.hs == nil {
+		return 0
 	}
 	return s.hs.Len()
 }

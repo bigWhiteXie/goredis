@@ -60,10 +60,15 @@ func (rb *ReplBacklog) ReadFrom(offset int64) []byte {
 	length := rb.end - offset
 	data := make([]byte, length)
 
+	// 计算 offset 对应的物理起始位置
+	// 当前写入位置 rb.idx 指向 rb.end 的下一个位置
+	// 所以 rb.end 对应的物理位置是 (rb.idx - 1 + rb.size) % rb.size
+	// 那么 offset 对应的位置 = (rb.idx - (rb.end - offset) + rb.size) % rb.size
+	startIdx := (rb.idx - (rb.end - offset) + rb.size) % rb.size
+
 	for i := int64(0); i < length; i++ {
-		globalPos := offset + i
-		bufPos := globalPos % rb.size
-		data[i] = rb.buf[bufPos]
+		pos := (startIdx + i) % rb.size
+		data[i] = rb.buf[pos]
 	}
 
 	return data

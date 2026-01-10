@@ -118,7 +118,7 @@ func execDecrBy(db types.Database, args [][]byte) resp.Reply {
 
 	entity, exists := db.GetEntity(key)
 	if !exists {
-		str := data.NewSimpleString(true, delta)
+		str := data.NewSimpleString(true, -delta)
 		db.PutEntity(key, &types.DataEntity{Data: str})
 		return resp.MakeIntReply(-delta)
 	}

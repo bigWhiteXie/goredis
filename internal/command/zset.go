@@ -11,7 +11,7 @@ import (
 
 // ZADD key [NX|XX] [CH] score member [score member ...]
 func execZAdd(db types.Database, args [][]byte) resp.Reply {
-	if len(args) < 3 || len(args)%2 == 0 {
+	if len(args) < 3 {
 		return resp.MakeErrReply("ERR wrong number of arguments for 'zadd' command")
 	}
 
@@ -34,7 +34,9 @@ func execZAdd(db types.Database, args [][]byte) resp.Reply {
 			break
 		}
 	}
-
+	if (len(args)-scoreMemberStart)%2 != 0 {
+		return resp.MakeErrReply("ERR wrong number of arguments for 'zadd' command")
+	}
 	added := 0
 	for i := scoreMemberStart; i < len(args); i += 2 {
 		scoreStr := string(args[i])

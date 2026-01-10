@@ -24,10 +24,10 @@ type DB struct {
 	data   datastruct.Dict // 核心数据存储 (Key -> types.DataEntity)
 	ttlMap datastruct.Dict // 过期时间存储 (Key -> time.Time) - 对标 Redis 的 expires
 
-	aofHandler *persistant.AOFHandler
+	aofHandler persistant.AOFHandlerInterface
 }
 
-func MakeDB(index int, aofHandler *persistant.AOFHandler) *DB {
+func MakeDB(index int, aofHandler persistant.AOFHandlerInterface) *DB {
 	db := &DB{
 		index:      index,
 		data:       datastruct.MakeConcurrent(1024),
