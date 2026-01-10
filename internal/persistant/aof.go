@@ -6,6 +6,7 @@ import (
 	"goredis/internal/common"
 	"goredis/internal/resp"
 	"goredis/internal/types"
+	"goredis/pkg/connection"
 	"goredis/pkg/parser"
 	"log"
 	"os"
@@ -26,14 +27,21 @@ const (
 )
 
 type AOFHandler struct {
-	file        *os.File      // aof文件
-	writer      *bufio.Writer // 缓冲区
-	ch          chan types.CmdLine
+	path   string
+	file   *os.File      // aof文件
+	writer *bufio.Writer // 缓冲区
+	ch     chan types.CmdLine
+
 	mu          sync.Mutex
-	path        string
 	bufferCount int
 	state       int32
 	rewriteBuf  []types.CmdLine // 存放rewrite期间的新命令
+
+	// 主从集群相关字段
+	offset   int64 // 当前实例写入aof文件的偏移量
+	slavesMu sync.Mutex
+	slaves   map[connection.Connection]struct{}
+	backlog  *ReplBacklog
 }
 
 func NewAOFHandler(dir string, dbIndex int) (*AOFHandler, error) {
@@ -53,6 +61,8 @@ func NewAOFHandler(dir string, dbIndex int) (*AOFHandler, error) {
 		ch:     make(chan types.CmdLine, 4096),
 		path:   path,
 	}
+	h.slaves = make(map[connection.Connection]struct{})
+	h.offset, _ = h.LogSize()
 
 	go h.handle()
 	return h, nil
@@ -66,6 +76,10 @@ func (aof *AOFHandler) AddAOF(cmd types.CmdLine) {
 			aof.ch <- cmd
 		}()
 	}
+}
+
+func (aof *AOFHandler) SetBacklog(backlog *ReplBacklog) {
+	aof.backlog = backlog
 }
 
 func (aof *AOFHandler) Rewrite(db types.Database) error {
@@ -124,6 +138,34 @@ func (aof *AOFHandler) Rewrite(db types.Database) error {
 	return nil
 }
 
+func (aof *AOFHandler) CurrentOffset() int64 {
+	return atomic.LoadInt64(&aof.offset)
+}
+
+func (aof *AOFHandler) ReadAll() ([]byte, int64, error) {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
+	bytes, err := os.ReadFile(aof.path)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return bytes, aof.backlog.end - int64(len(bytes)), nil
+}
+
+func (aof *AOFHandler) AddSlave(w connection.Connection) {
+	aof.slavesMu.Lock()
+	defer aof.slavesMu.Unlock()
+	aof.slaves[w] = struct{}{}
+}
+
+func (aof *AOFHandler) RemoveSlave(w connection.Connection) {
+	aof.slavesMu.Lock()
+	defer aof.slavesMu.Unlock()
+	delete(aof.slaves, w)
+}
+
 func (aof *AOFHandler) handle() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -163,7 +205,26 @@ func (aof *AOFHandler) SetState(state int32) {
 
 func (aof *AOFHandler) writeCmd(cmd types.CmdLine) {
 	reply := resp.MakeMultiBulkReply(cmd)
-	_, _ = aof.writer.Write(reply.ToBytes())
+	b := reply.ToBytes()
+
+	// 原子更新aof的offset和backlog的offset
+	aof.mu.Lock()
+	n, _ := aof.writer.Write(b)
+	aof.offset += int64(n)
+	if aof.backlog != nil {
+		aof.backlog.Append(b)
+	}
+	aof.mu.Unlock()
+
+	// 向从节点广播命令
+	aof.slavesMu.Lock()
+	for s := range aof.slaves {
+		if _, err := s.Write(b); err != nil {
+			log.Printf("[aof replication] write cmd failed: %s", err)
+			delete(aof.slaves, s)
+		}
+	}
+	aof.slavesMu.Unlock()
 }
 
 func (h *AOFHandler) flush() {
@@ -224,4 +285,38 @@ func (aof *AOFHandler) LogSize() (int64, error) {
 		return 0, err
 	}
 	return info.Size(), nil
+}
+
+// Reset 清空 AOF 文件并重置内部状态
+func (aof *AOFHandler) Reset(offset int64) error {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
+	// 1. 先把缓冲区刷掉，避免旧数据混进去
+	if err := aof.writer.Flush(); err != nil {
+		return fmt.Errorf("flush writer failed: %w", err)
+	}
+
+	// 2. 截断文件（如果不存在则创建）
+	if err := aof.file.Truncate(0); err != nil {
+		return fmt.Errorf("truncate aof failed: %w", err)
+	}
+
+	// 3. 文件指针回到头部
+	if _, err := aof.file.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek aof failed: %w", err)
+	}
+
+	// 4. 强制落盘
+	if err := aof.file.Sync(); err != nil {
+		return fmt.Errorf("fsync aof failed: %w", err)
+	}
+
+	// 5. 重置内部状态
+	aof.bufferCount = 0
+	aof.offset = offset
+	aof.rewriteBuf = make([]types.CmdLine, 0)
+	atomic.StoreInt64(&aof.offset, 0)
+
+	return nil
 }

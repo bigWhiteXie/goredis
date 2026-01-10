@@ -7,23 +7,30 @@ import (
 )
 
 func ToCmdLine(payload interface{}) ([][]byte, bool) {
-	arr, ok := payload.([]interface{})
-	if !ok {
-		return nil, false
-	}
-
-	cmd := make([][]byte, len(arr))
-	cmdStr := ""
-	for i, v := range arr {
-		bs, ok := v.([]byte)
-		if !ok {
-			return nil, false
+	switch payload.(type) {
+	case []interface{}:
+		arr, _ := payload.([]interface{})
+		cmd := make([][]byte, len(arr))
+		for i, v := range arr {
+			bs, ok := v.([]byte)
+			if !ok {
+				return nil, false
+			}
+			cmd[i] = bs
 		}
-		cmdStr += string(bs) + " "
-		cmd[i] = bs
+
+		return cmd, true
+	case string:
+		str := payload.(string)
+		arr := strings.Split(str, " ")
+		cmd := make([][]byte, len(arr))
+		for i, v := range arr {
+			cmd[i] = []byte(v)
+		}
+		return cmd, true
 	}
 
-	return cmd, true
+	return nil, false
 }
 
 func LogBytesArr(prefix string, content [][]byte) {

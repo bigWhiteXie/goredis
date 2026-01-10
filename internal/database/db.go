@@ -8,6 +8,7 @@ import (
 	"goredis/internal/persistant"
 	"goredis/internal/resp"
 	"goredis/internal/types"
+	"goredis/pkg/connection"
 	"goredis/pkg/datastruct"
 )
 
@@ -26,11 +27,7 @@ type DB struct {
 	aofHandler *persistant.AOFHandler
 }
 
-func MakeDB(index int, dir string) *DB {
-	aofHandler, err := persistant.NewAOFHandler(dir, index)
-	if err != nil {
-		panic(err)
-	}
+func MakeDB(index int, aofHandler *persistant.AOFHandler) *DB {
 	db := &DB{
 		index:      index,
 		data:       datastruct.MakeConcurrent(1024),
@@ -39,7 +36,7 @@ func MakeDB(index int, dir string) *DB {
 	}
 
 	if aofHandler.HasData() {
-		if err := db.loadAOF(); err != nil {
+		if err := db.LoadAOF(); err != nil {
 			panic(err)
 		}
 	}
@@ -49,10 +46,10 @@ func MakeDB(index int, dir string) *DB {
 	return db
 }
 
-func (db *DB) loadAOF() error {
+func (db *DB) LoadAOF() error {
 	return db.aofHandler.Load(func(cmd types.CmdLine) {
 		// FakeConn，避免再次写 AOF
-		conn := resp.NewFakeConnection(db.index)
+		conn := connection.NewAOFConnection(db.index)
 		db.Exec(conn, cmd)
 	})
 }
@@ -89,7 +86,7 @@ func (db *DB) Remove(key string) bool {
 
 // Exec 在单个 DB 中执行命令
 // 实际逻辑是：根据 command name 查表找到对应的 ExecFunc 并调用
-func (db *DB) Exec(c resp.Connection, cmdLine [][]byte) resp.Reply {
+func (db *DB) Exec(c connection.Connection, cmdLine [][]byte) resp.Reply {
 	// 1. 获取命令名称 (如 "SET")
 	cmdName := strings.ToLower(string(cmdLine[0]))
 
@@ -106,7 +103,9 @@ func (db *DB) Exec(c resp.Connection, cmdLine [][]byte) resp.Reply {
 	// 4. 执行具体函数
 	reply := cmd.Executor(db, cmdLine[1:])
 	if !resp.IsErrorReply(reply) {
-		db.aofHandler.AddAOF(cmdLine)
+		if _, ok := c.(*connection.AOFConnection); !ok {
+			db.aofHandler.AddAOF(cmdLine)
+		}
 	}
 
 	return reply
@@ -189,6 +188,11 @@ func (db *DB) GetExpireTime(key string) (time.Time, bool) {
 	}
 
 	return val.(time.Time), true
+}
+
+func (db *DB) Clear() {
+	db.data = datastruct.MakeConcurrent(1024)
+	db.ttlMap = datastruct.MakeConcurrent(1024)
 }
 
 func (db *DB) startAOFRewriteChecker() {

@@ -2,6 +2,7 @@ package types
 
 import (
 	"goredis/internal/resp"
+	"goredis/pkg/connection"
 	"time"
 )
 
@@ -21,7 +22,7 @@ type Database interface {
 	Remove(key string) bool
 
 	// Exec 在数据库中执行命令
-	Exec(c resp.Connection, cmdLine [][]byte) resp.Reply
+	Exec(c connection.Connection, cmdLine [][]byte) resp.Reply
 
 	// SetExpire 设置键的过期时间
 	SetExpire(key string, expireTime time.Time)
