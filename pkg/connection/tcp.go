@@ -21,7 +21,7 @@ type TCPConnection struct {
 	closed  bool
 }
 
-func NewTCPConnection(conn net.Conn) *TCPConnection {
+func NewTCPConnection(conn net.Conn) Connection {
 	return &TCPConnection{
 		conn:    conn,
 		dbIndex: 0, // Redis 默认 DB 0

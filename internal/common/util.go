@@ -26,6 +26,7 @@ func ToCmdLine(payload interface{}) ([][]byte, bool) {
 		cmd := make([][]byte, len(arr))
 		for i, v := range arr {
 			cmd[i] = []byte(v)
+
 		}
 		return cmd, true
 	}

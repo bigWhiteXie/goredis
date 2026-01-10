@@ -16,4 +16,7 @@ type Connection interface {
 
 	// 获取客户端地址（用于日志、ACL）
 	RemoteAddr() string
+
+	IsSlave() bool
+	SetSlave()
 }

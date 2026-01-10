@@ -38,7 +38,7 @@ type AOFHandler struct {
 	rewriteBuf  []types.CmdLine // 存放rewrite期间的新命令
 
 	// 主从集群相关字段
-	offset   int64 // 当前实例写入aof文件的偏移量
+	offset   int64 // 记录当前节点的offset
 	slavesMu sync.Mutex
 	slaves   map[connection.Connection]struct{}
 	backlog  *ReplBacklog
@@ -217,14 +217,20 @@ func (aof *AOFHandler) writeCmd(cmd types.CmdLine) {
 	aof.mu.Unlock()
 
 	// 向从节点广播命令
-	aof.slavesMu.Lock()
 	for s := range aof.slaves {
-		if _, err := s.Write(b); err != nil {
-			log.Printf("[aof replication] write cmd failed: %s", err)
-			delete(aof.slaves, s)
-		}
+		go func(conn connection.Connection) {
+			if _, err := s.Write(b); err != nil {
+				log.Printf("[aof replication] write cmd failed: %s", err)
+				conn.Close()
+
+				aof.slavesMu.Lock()
+				delete(aof.slaves, s)
+				aof.slavesMu.Unlock()
+
+			}
+		}(s)
 	}
-	aof.slavesMu.Unlock()
+
 }
 
 func (h *AOFHandler) flush() {

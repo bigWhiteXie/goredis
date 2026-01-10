@@ -35,3 +35,9 @@ func (c *AOFConnection) IsClosed() bool {
 func (c *AOFConnection) RemoteAddr() string {
 	return "local:aof"
 }
+
+func (c *AOFConnection) SetSlave() {}
+
+func (c *AOFConnection) IsSlave() bool {
+	return false
+}
