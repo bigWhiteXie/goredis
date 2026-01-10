@@ -1,12 +1,13 @@
 package command
 
 import (
-	"goredis/internal/data"
-	"goredis/internal/resp"
-	"goredis/internal/types"
 	"strconv"
 	"strings"
 	"time"
+
+	"goredis/internal/data"
+	"goredis/internal/resp"
+	"goredis/internal/types"
 )
 
 func getString(db types.Database, key string) (*data.SimpleString, bool, resp.Reply) {
@@ -170,7 +171,6 @@ func execSet(db types.Database, args [][]byte) resp.Reply {
 	// 2. NX 语义判断（在写之前）
 	if useNX {
 		if _, exists := db.GetEntity(key); exists {
-			// Redis 行为：返回 nil bulk reply
 			return resp.MakeNullBulkReply()
 		}
 	}

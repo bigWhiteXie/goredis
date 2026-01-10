@@ -14,7 +14,7 @@ const DefaultDictSize = 1024
 const ShardCount = 1024
 
 // Consumer 用于遍历的回调，返回 false 则停止遍历
-type Consumer func(key string, val interface{}) bool
+type Consumer func(key string, data interface{}) bool
 
 // Dict 抽象接口，屏蔽底层实现细节
 type Dict interface {

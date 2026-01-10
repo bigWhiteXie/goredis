@@ -1,6 +1,8 @@
 package data
 
 import (
+	"goredis/internal/common"
+	"goredis/internal/types"
 	"goredis/pkg/datastruct"
 )
 
@@ -9,6 +11,8 @@ const (
 )
 
 type List interface {
+	types.RedisData
+
 	// LPUSH
 	PushFront(val []byte)
 
@@ -256,7 +260,7 @@ func (ql *QuickList) Set(index int, val []byte) bool {
 func (ql *QuickList) RemoveByValue(count int, val []byte) int {
 	removed := 0
 
-	for node := ql.list.Head(); node != nil && (count == 0 || removed < abs(count)); {
+	for node := ql.list.Head(); node != nil && (count == 0 || removed < common.Abs(count)); {
 		next := node.Next()
 		qn := node.Value().(*QuickListNode)
 
@@ -306,11 +310,22 @@ func (ql *QuickList) Len() int {
 	return ql.len
 }
 
-func abs(n int) int {
-	if n < 0 {
-		return -n
+func (ql *QuickList) ToWriteCmdLine(key string) [][]byte {
+	cmdLine := [][]byte{[]byte("rpush"), []byte(key)}
+	results := ql.Range(0, ql.Len())
+	for _, res := range results {
+		cmdLine = append(cmdLine, res)
 	}
-	return n
+
+	return cmdLine
+}
+
+func (ql *QuickList) Clone() interface{} {
+	nl := NewQuickList()
+	for _, member := range ql.Range(0, ql.len-1) {
+		nl.PushBack(common.CloneBytes(member))
+	}
+	return nl
 }
 
 func normalizeRange(start, stop, length int) (int, int, bool) {

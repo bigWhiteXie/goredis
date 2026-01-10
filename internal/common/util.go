@@ -47,3 +47,9 @@ func ParseInt(b []byte) (int64, bool) {
 	v, err := strconv.ParseInt(string(b), 10, 64)
 	return v, err == nil
 }
+
+func CloneBytes(b []byte) []byte {
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	return cp
+}

@@ -10,7 +10,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,13 +20,20 @@ const (
 	batchSize = 1024
 )
 
+const (
+	AOFNormal    = 0
+	AOFRewriting = 1
+)
+
 type AOFHandler struct {
-	file        *os.File
-	writer      *bufio.Writer
+	file        *os.File      // aof文件
+	writer      *bufio.Writer // 缓冲区
 	ch          chan types.CmdLine
 	mu          sync.Mutex
 	path        string
 	bufferCount int
+	state       int32
+	rewriteBuf  []types.CmdLine // 存放rewrite期间的新命令
 }
 
 func NewAOFHandler(dir string, dbIndex int) (*AOFHandler, error) {
@@ -59,6 +68,62 @@ func (aof *AOFHandler) AddAOF(cmd types.CmdLine) {
 	}
 }
 
+func (aof *AOFHandler) Rewrite(db types.Database) error {
+	aof.mu.Lock()
+	if aof.state == AOFRewriting {
+		aof.mu.Unlock()
+		return nil
+	}
+	aof.state = AOFRewriting
+	aof.mu.Unlock()
+
+	tmpPath := fmt.Sprintf("db%d.aof.tmp", db.GetDBIndex())
+	tmpFile, _ := os.Create(tmpPath)
+	writer := bufio.NewWriter(tmpFile)
+
+	// 写快照
+	db.ForEach(func(key string, entity types.RedisData) {
+		var ttl float64
+		if expiredTime, ok := db.GetExpireTime(key); ok {
+			ttl = expiredTime.Sub(time.Now()).Seconds()
+			if ttl <= 0 {
+				return
+			}
+		}
+
+		cmd := entity.ToWriteCmdLine(key)
+		reply := resp.MakeMultiBulkReply(cmd)
+		writer.Write(reply.ToBytes())
+		// 该key有过期时间则加上
+		if ttl > 0 {
+			ttlResp := resp.MakeMultiBulkReply([][]byte{[]byte("expire"), []byte(key), []byte(strconv.FormatFloat(ttl, 'f', -1, 64))})
+			writer.Write(ttlResp.ToBytes())
+		}
+	})
+
+	// 2写 rewrite buffer
+	aof.mu.Lock()
+	for _, cmd := range aof.rewriteBuf {
+		reply := resp.MakeMultiBulkReply(cmd)
+		writer.Write(reply.ToBytes())
+	}
+	aof.rewriteBuf = nil
+	aof.mu.Unlock()
+
+	writer.Flush()
+	tmpFile.Sync()
+	tmpFile.Close()
+
+	// 原子替换
+	os.Rename(tmpPath, aof.file.Name())
+
+	aof.mu.Lock()
+	aof.state = AOFNormal
+	aof.mu.Unlock()
+
+	return nil
+}
+
 func (aof *AOFHandler) handle() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -69,7 +134,15 @@ func (aof *AOFHandler) handle() {
 			if !cmd.IsWrite() {
 				continue
 			}
-			aof.writeCmd(cmd)
+
+			if atomic.LoadInt32(&aof.state) == AOFNormal {
+				aof.writeCmd(cmd)
+			} else {
+				// rewrite 期间写入buffer中
+				aof.mu.Lock()
+				aof.rewriteBuf = append(aof.rewriteBuf, cmd)
+				aof.mu.Unlock()
+			}
 			aof.bufferCount++
 
 			if aof.bufferCount >= batchSize {
@@ -82,6 +155,10 @@ func (aof *AOFHandler) handle() {
 			}
 		}
 	}
+}
+
+func (aof *AOFHandler) SetState(state int32) {
+	atomic.StoreInt32(&aof.state, state)
 }
 
 func (aof *AOFHandler) writeCmd(cmd types.CmdLine) {
@@ -132,4 +209,19 @@ func (aof *AOFHandler) Load(replay func(cmd types.CmdLine)) error {
 		replay(cmdLine)
 	}
 	return nil
+}
+
+func (aof *AOFHandler) LogSize() (int64, error) {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
+	if aof.file == nil {
+		return 0, nil
+	}
+
+	info, err := aof.file.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }

@@ -1,14 +1,20 @@
 package database
 
 import (
+	"strings"
+	"time"
+
 	"goredis/internal/command"
 	"goredis/internal/persistant"
 	"goredis/internal/resp"
 	"goredis/internal/types"
 	"goredis/pkg/datastruct"
-	"time"
+)
 
-	"strings"
+const (
+	aofRewriteMinSize    = 64 * 1024 * 1024 // 64MB
+	aofRewritePercentage = 25               // 增长 25%
+	aofCheckInterval     = 10 * time.Second
 )
 
 // DB 代表每一个单独的数据库 (如 db0, db1...)
@@ -39,7 +45,7 @@ func MakeDB(index int, dir string) *DB {
 	}
 
 	db.StartExpireTask()
-
+	db.startAOFRewriteChecker()
 	return db
 }
 
@@ -75,16 +81,6 @@ func (db *DB) DeleteTTL(key string) {
 	db.ttlMap.Remove(key)
 }
 
-// PutIfExists 仅当存在时更新
-func (db *DB) PutIfExists(key string, entity *types.DataEntity) int {
-	return db.data.PutIfExists(key, entity)
-}
-
-// PutIfAbsent 仅当不存在时写入 (SETNX)
-func (db *DB) PutIfAbsent(key string, entity *types.DataEntity) int {
-	return db.data.PutIfAbsent(key, entity)
-}
-
 // Remove 删除 Key
 func (db *DB) Remove(key string) bool {
 	db.ttlMap.Remove(key) // 别忘了删除 TTL
@@ -114,6 +110,17 @@ func (db *DB) Exec(c resp.Connection, cmdLine [][]byte) resp.Reply {
 	}
 
 	return reply
+}
+
+func (db *DB) GetDBIndex() int {
+	return db.index
+}
+
+func (db *DB) ForEach(handler func(key string, entity types.RedisData)) {
+	db.data.ForEach(func(key string, data interface{}) bool {
+		handler(key, data.(types.RedisData))
+		return true
+	})
 }
 
 func (db *DB) SetExpire(key string, expireTime time.Time) {
@@ -175,6 +182,84 @@ func (db *DB) activeExpire() {
 	}
 }
 
+func (db *DB) GetExpireTime(key string) (time.Time, bool) {
+	val, ok := db.ttlMap.Get(key)
+	if !ok {
+		return time.Now(), false
+	}
+
+	return val.(time.Time), true
+}
+
+func (db *DB) startAOFRewriteChecker() {
+	go func() {
+		ticker := time.NewTicker(aofCheckInterval)
+		defer ticker.Stop()
+
+		var lastRewriteSize int64
+
+		for range ticker.C {
+			aof := db.aofHandler
+			if aof == nil {
+				continue
+			}
+
+			size, err := aof.LogSize()
+			if err != nil {
+				continue
+			}
+
+			// 小于最小 rewrite 大小，不处理
+			if size < aofRewriteMinSize {
+				continue
+			}
+
+			// 首次记录基线
+			if lastRewriteSize == 0 {
+				lastRewriteSize = size
+				continue
+			}
+
+			// 判断增长比例
+			growth := (size - lastRewriteSize) * 100 / lastRewriteSize
+			if growth < aofRewritePercentage {
+				continue
+			}
+
+			// 触发 rewrite
+			db.aofHandler.Rewrite(db.Clone())
+		}
+	}()
+}
+
+func (db *DB) Clone() *DB {
+	// 创建新的 Dict
+	newData := datastruct.MakeConcurrent(db.data.Len())
+	newTTL := datastruct.MakeConcurrent(db.ttlMap.Len())
+
+	// 拷贝 data
+	db.data.ForEach(func(key string, val interface{}) bool {
+		// val 一般是 types.DataEntity
+		data := val.(types.Cloneable)
+		newData.Put(key, data.Clone())
+		return true
+	})
+
+	// 拷贝 ttlMap
+	db.ttlMap.ForEach(func(key string, val interface{}) bool {
+		// val 是 time.Time
+		newTTL.Put(key, val)
+		return true
+	})
+
+	return &DB{
+		index:  db.index,
+		data:   newData,
+		ttlMap: newTTL,
+	}
+}
+
+// 校验参数数量
 func validateArity(arity int, cmdLine [][]byte) bool {
 	n := len(cmdLine)
 

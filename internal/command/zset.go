@@ -18,7 +18,7 @@ func execZAdd(db types.Database, args [][]byte) resp.Reply {
 	key := string(args[0])
 	zset := getOrCreateZSet(db, key)
 
-	var nx, xx, ch bool
+	var nx, xx bool
 	scoreMemberStart := 1
 
 	// 解析选项
@@ -28,8 +28,6 @@ func execZAdd(db types.Database, args [][]byte) resp.Reply {
 			nx = true
 		} else if bytes.Equal(opt, []byte("xx")) {
 			xx = true
-		} else if bytes.Equal(opt, []byte("ch")) {
-			ch = true
 		} else {
 			// 第一个非选项位置即为 score
 			scoreMemberStart = i
@@ -47,7 +45,7 @@ func execZAdd(db types.Database, args [][]byte) resp.Reply {
 			return resp.MakeErrReply("ERR value is not a valid float")
 		}
 
-		added += zset.ZAdd(ch, nx, xx, score, member)
+		added += zset.ZAdd(nx, xx, score, member)
 	}
 
 	db.PutEntity(key, &types.DataEntity{Data: zset})

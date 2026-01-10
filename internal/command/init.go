@@ -16,10 +16,10 @@ func init() {
 		Arity:    3,
 		Executor: execExpire,
 	})
+
 	// ========================
 	// String Commands
 	// ========================
-
 	RegisterCommand(&Command{
 		Name:     "set",
 		Arity:    -3, // set key value [options]
@@ -72,6 +72,17 @@ func init() {
 		Name:     "decrby",
 		Arity:    3, // decrby key decrement
 		Executor: execDecrBy,
+	})
+
+	RegisterCommand(&Command{
+		Name:     "mget",
+		Arity:    -2, // decrby key decrement
+		Executor: execMGet,
+	})
+	RegisterCommand(&Command{
+		Name:     "mset",
+		Arity:    -3, // decrby key decrement
+		Executor: execMSet,
 	})
 
 	// ========================
@@ -182,7 +193,20 @@ func init() {
 		Arity:    -2, // srandmember key [count]
 		Executor: execSRandMember,
 	})
+	RegisterCommand(&Command{
+		Name:     "sunion",
+		Arity:    -3,
+		Executor: execSUnion,
+	})
+	RegisterCommand(&Command{
+		Name:     "sinter",
+		Arity:    -3,
+		Executor: execSInter,
+	})
 
+	// ========================
+	// ZSet Commands
+	// ========================
 	RegisterCommand(&Command{
 		Name:     "zadd",
 		Arity:    -4,
@@ -243,5 +267,59 @@ func init() {
 		Name:     "zrem",
 		Arity:    -3,
 		Executor: execZRem,
+	})
+
+	// ========================
+	// HashMap Commands
+	// ========================
+	RegisterCommand(&Command{
+		Name:     "hset",
+		Arity:    4,
+		Executor: execHSet,
+	})
+	RegisterCommand(&Command{
+		Name:     "hget",
+		Arity:    3,
+		Executor: execHGet,
+	})
+	RegisterCommand(&Command{
+		Name:     "hdel",
+		Arity:    -3,
+		Executor: execHDel,
+	})
+	RegisterCommand(&Command{
+		Name:     "hexists",
+		Arity:    3,
+		Executor: execHExists,
+	})
+	RegisterCommand(&Command{
+		Name:     "hlen",
+		Arity:    2,
+		Executor: execHLEN,
+	})
+	RegisterCommand(&Command{
+		Name:     "hkeys",
+		Arity:    2,
+		Executor: execHKeys,
+	})
+	RegisterCommand(&Command{
+		Name:     "hvals",
+		Arity:    2,
+		Executor: execHVals,
+	})
+	RegisterCommand(&Command{
+		Name:     "hgetall",
+		Arity:    2,
+		Executor: execHGetAll,
+	})
+	RegisterCommand(&Command{
+		Name:     "hmset",
+		Arity:    -4,
+		Executor: execHMSet,
+	})
+	RegisterCommand(&Command{
+		Name:     "hmget",
+		Arity:    -3,
+		Executor: execHMGet,
 	})
 }

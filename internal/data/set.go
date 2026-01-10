@@ -2,11 +2,14 @@ package data
 
 import (
 	"goredis/internal/common"
+	"goredis/internal/types"
 	"goredis/pkg/datastruct"
 	"strconv"
 )
 
 type Set interface {
+	types.RedisData
+
 	Add(member []byte) bool
 	Remove(member []byte) bool
 	Contains(member []byte) bool
@@ -140,4 +143,22 @@ func (s *SetObject) Pop() ([]byte, bool) {
 		return []byte(strconv.FormatInt(v, 10)), true
 	}
 	return s.hs.Pop()
+}
+
+func (s *SetObject) ToWriteCmdLine(key string) [][]byte {
+	cmdLine := [][]byte{[]byte("sadd"), []byte(key)}
+	for _, member := range s.Members() {
+		cmdLine = append(cmdLine, member)
+	}
+
+	return cmdLine
+}
+
+func (s *SetObject) Clone() interface{} {
+	ns := NewSet()
+	for _, member := range s.Members() {
+		ns.Add(common.CloneBytes(member))
+	}
+
+	return ns
 }

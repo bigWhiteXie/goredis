@@ -1,8 +1,13 @@
 package data
 
-import "goredis/pkg/datastruct"
+import (
+	"goredis/internal/common"
+	"goredis/internal/types"
+	"goredis/pkg/datastruct"
+)
 
 type Hash interface {
+	types.RedisData
 	// 设置字段，如果字段不存在则新增，返回新增字段数量
 	HSet(field string, value []byte) int
 
@@ -92,4 +97,24 @@ func (h *RedisHash) HGetAll() map[string][]byte {
 		return true
 	})
 	return m
+}
+
+func (h *RedisHash) ToWriteCmdLine(key string) [][]byte {
+	cmdLine := [][]byte{[]byte("hmset"), []byte(key)}
+
+	h.data.ForEach(func(k string, v interface{}) bool {
+		cmdLine = append(cmdLine, []byte(k), v.([]byte))
+		return true
+	})
+	return cmdLine
+}
+
+func (h *RedisHash) Clone() interface{} {
+	nh := NewRedisHash()
+
+	h.data.ForEach(func(k string, v interface{}) bool {
+		nh.data.Put(k, common.CloneBytes(v.([]byte)))
+		return true
+	})
+	return nh
 }

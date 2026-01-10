@@ -2,6 +2,8 @@ package data
 
 import (
 	"bytes"
+	"goredis/internal/common"
+	"goredis/internal/types"
 	"goredis/pkg/datastruct"
 	"sort"
 	"strconv"
@@ -9,8 +11,10 @@ import (
 
 // ZSetInterface 抽象 Redis ZSet 命令操作
 type ZSetInterface interface {
+	types.RedisData
+
 	// ZADD key [NX|XX] [CH] score member [score member ...]
-	ZAdd(ch bool, nx bool, xx bool, score float64, member []byte) int
+	ZAdd(nx bool, xx bool, score float64, member []byte) int
 
 	// ZREM key member [member ...]
 	ZRem(member []byte) int
@@ -63,7 +67,7 @@ func NewZSet() *ZSet {
 	}
 }
 
-func (zs *ZSet) ZAdd(ch bool, nx bool, xx bool, score float64, member []byte) int {
+func (zs *ZSet) ZAdd(nx bool, xx bool, score float64, member []byte) int {
 	memberStr := string(member)
 	added := 0
 
@@ -372,9 +376,9 @@ func (zs *ZSet) ZIncrBy(delta float64, member []byte) float64 {
 	oldScore, exists := zs.dict[string(member)]
 	newScore := oldScore + delta
 	if exists {
-		zs.ZAdd(false, false, true, newScore, member)
+		zs.ZAdd(false, true, newScore, member)
 	} else {
-		zs.ZAdd(false, false, false, newScore, member)
+		zs.ZAdd(false, false, newScore, member)
 	}
 	return newScore
 }
@@ -407,6 +411,28 @@ func (zs *ZSet) Clear() {
 	zs.dict = make(map[string]float64)
 	zs.lp = datastruct.NewListPack(zsetMaxZiplist)
 	zs.sl = nil
+}
+
+func (zs *ZSet) ToWriteCmdLine(key string) [][]byte {
+	cmdLine := [][]byte{[]byte("zadd"), []byte(key)}
+
+	for _, member := range zs.ZRange(0, zs.ZCard(), false) {
+		score := zs.dict[string(member)]
+		cmdLine = append(cmdLine, []byte(strconv.FormatFloat(score, 'f', -1, 64)), member)
+	}
+
+	return cmdLine
+}
+
+func (zs *ZSet) Clone() interface{} {
+	nz := NewZSet()
+
+	for _, member := range zs.ZRange(0, zs.lp.Len()-1, false) {
+		score := zs.dict[string(member)]
+		nz.ZAdd(false, false, score, common.CloneBytes(member))
+	}
+
+	return nz
 }
 
 func encodeZSetEntry(score float64, member []byte) []byte {

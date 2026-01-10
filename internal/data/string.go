@@ -2,10 +2,14 @@ package data
 
 import (
 	"errors"
+	"goredis/internal/common"
+	"goredis/internal/types"
 	"strconv"
 )
 
 type String interface {
+	types.RedisData
+
 	// GET
 	Get() []byte
 
@@ -74,4 +78,18 @@ func (s *SimpleString) IncrBy(delta int64) (int64, error) {
 	}
 	s.valInt += delta
 	return s.valInt, nil
+}
+
+func (s *SimpleString) ToWriteCmdLine(key string) [][]byte {
+	cmdLine := [][]byte{[]byte("set"), []byte(key)}
+	cmdLine = append(cmdLine, s.valRaw)
+	return cmdLine
+}
+
+func (s *SimpleString) Clone() interface{} {
+	return &SimpleString{
+		isInt:  s.isInt,
+		valInt: s.valInt,
+		valRaw: common.CloneBytes(s.valRaw),
+	}
 }

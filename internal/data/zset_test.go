@@ -13,14 +13,14 @@ func TestZSetSmall_BasicCRUD(t *testing.T) {
 	zs := NewZSet()
 
 	// ZAdd 新增
-	if n := zs.ZAdd(false, false, false, 1, []byte("m1")); n != 1 {
+	if n := zs.ZAdd(false, false, 1, []byte("m1")); n != 1 {
 		t.Error("small ZAdd new member should return 1")
 	}
-	if n := zs.ZAdd(false, false, false, 2, []byte("m2")); n != 1 {
+	if n := zs.ZAdd(false, false, 2, []byte("m2")); n != 1 {
 		t.Error("small ZAdd new member should return 1")
 	}
 	// 覆盖
-	if n := zs.ZAdd(false, false, false, 3, []byte("m1")); n != 0 {
+	if n := zs.ZAdd(false, false, 3, []byte("m1")); n != 0 {
 		t.Error("small ZAdd overwrite should return 0")
 	}
 	// ZScore
@@ -47,7 +47,7 @@ func TestZSetSmall_ZRange(t *testing.T) {
 	zs := NewZSet()
 	// 写入 10 个乱序分数
 	for i := 0; i < 10; i++ {
-		zs.ZAdd(false, false, false, float64(10-i), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(10-i), []byte("m"+itoa(i)))
 	}
 	// 正序 [0,9] 带分数
 	arr := zs.ZRange(0, 9, true)
@@ -78,7 +78,7 @@ func TestZSetSmall_ZRange(t *testing.T) {
 func TestZSetSmall_ZCount(t *testing.T) {
 	zs := NewZSet()
 	for i := 1; i <= 10; i++ {
-		zs.ZAdd(false, false, false, float64(i), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(i), []byte("m"+itoa(i)))
 	}
 	if c := zs.ZCount(3, 7); c != 5 {
 		t.Errorf("small ZCount=%d, want 5", c)
@@ -90,7 +90,7 @@ func TestZSetSmall_ZCount(t *testing.T) {
 
 func TestZSetSmall_ZIncrBy(t *testing.T) {
 	zs := NewZSet()
-	zs.ZAdd(false, false, false, 10, []byte("m"))
+	zs.ZAdd(false, false, 10, []byte("m"))
 	newScore := zs.ZIncrBy(5, []byte("m"))
 	if newScore != 15 {
 		t.Errorf("small ZIncrBy=%v, want 15", newScore)
@@ -119,7 +119,7 @@ func TestZSetSmall_Edge(t *testing.T) {
 		t.Error("small ZRange on empty should return empty")
 	}
 	// 负数区间
-	zs.ZAdd(false, false, false, 1, []byte("m"))
+	zs.ZAdd(false, false, 1, []byte("m"))
 	arr = zs.ZRange(-1, -2, false)
 	if len(arr) != 0 {
 		t.Error("small ZRange negative reverse should return empty")
@@ -132,7 +132,7 @@ func TestZSetLarge_BasicCRUD(t *testing.T) {
 	zs := NewZSet()
 	// 写入 200 个，强制升级
 	for i := 0; i < 200; i++ {
-		zs.ZAdd(false, false, false, float64(i*10), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(i*10), []byte("m"+itoa(i)))
 	}
 	if zs.ZCard() != 200 {
 		t.Fatalf("large ZCard=%d, want 200", zs.ZCard())
@@ -153,7 +153,7 @@ func TestZSetLarge_ZRange(t *testing.T) {
 	zs := NewZSet()
 	n := 500
 	for i := 0; i < n; i++ {
-		zs.ZAdd(false, false, false, float64(i), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(i), []byte("m"+itoa(i)))
 	}
 	// 取中段 [100,199] 带分数
 	arr := zs.ZRange(100, 199, true)
@@ -179,7 +179,7 @@ func TestZSetLarge_ZCount(t *testing.T) {
 	zs := NewZSet()
 	// 0~999
 	for i := 0; i < 1000; i++ {
-		zs.ZAdd(false, false, false, float64(i), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(i), []byte("m"+itoa(i)))
 	}
 	if c := zs.ZCount(100, 200); c != 101 {
 		t.Errorf("large ZCount=%d, want 101", c)
@@ -193,7 +193,7 @@ func TestZSetLarge_ZIncrBy(t *testing.T) {
 	zs := NewZSet()
 	// 写入 300 个
 	for i := 0; i < 300; i++ {
-		zs.ZAdd(false, false, false, float64(i), []byte("m"+itoa(i)))
+		zs.ZAdd(false, false, float64(i), []byte("m"+itoa(i)))
 	}
 	// 对中间 member 递增
 	newScore := zs.ZIncrBy(50.5, []byte("m150"))
